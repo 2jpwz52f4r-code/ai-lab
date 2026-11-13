@@ -1,0 +1,53 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Research Lab</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2330;--mut:#667;--card:#fff;--line:#d9dde5;--acc:#2b5fd9}
+@media(prefers-color-scheme:dark){:root{--bg:#12161d;--fg:#e6e9ef;--mut:#9aa3b2;--card:#1b212b;--line:#2c3441;--acc:#7da2ff}}
+body{margin:0;font:16px/1.6 system-ui,sans-serif;background:var(--bg);color:var(--fg);padding:16px;max-width:720px;margin:auto}
+h1{font-size:1.2rem}h2{font-size:1rem;margin:20px 0 6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap}.chip{flex:1 1 150px}
+.mut{color:var(--mut);font-size:.85rem}
+textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+button{font:inherit;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+button.main{background:var(--acc);color:#fff;border-color:var(--acc)}
+pre{white-space:pre-wrap;word-break:break-word;margin:6px 0;font:inherit}
+.mock{color:#b45309}.err{color:#c2410c}
+</style></head><body>
+<h1>AI Research Lab（無料API版）</h1>
+<div id="st" class="row"></div>
+<h2>研究テーマ</h2>
+<textarea id="t" rows="3" placeholder="例: ピラミッド近くの失われたナイル支流はなぜ消えた？"></textarea>
+<p><button class="main" id="go">研究を始める</button> <span id="info" class="mut"></span></p>
+<div id="out"></div>
+<script>
+const $=id=>document.getElementById(id);
+const J=(u,o)=>fetch(u,o).then(r=>r.json());
+const P=(u,b)=>J(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const STEP={hypothesis:'独立した仮説',critique:'反論',synthesize:'整理（未検証の仮説として）'};
+async function status(){
+  const s=await J('/api/status');
+  $('st').innerHTML=s.map(a=>`<div class="card chip"><b>${a.name}</b>
+   <div class="mut ${a.model?'':'mock'}">${esc(a.state)}${a.model?' / '+esc(a.model):''}</div>
+   <div class="mut">仮説${a.scores.hypothesis} 反論${a.scores.critique} 整理${a.scores.synthesize}</div>
+   <button onclick="test('${a.name}')">接続テスト</button></div>`).join('');
+}
+async function test(n){await P('/api/test/'+n);status()}
+$('go').onclick=async()=>{
+  const t=$('t').value.trim(); if(!t)return;
+  $('go').disabled=true;$('info').textContent='実行中…（数十秒かかることがあります）';$('out').innerHTML='';
+  try{
+    const r=await P('/api/run',{topic:t});
+    $('info').textContent=`呼び出し ${r.run.calls}/${r.max_calls} 回`;
+    $('out').innerHTML=r.msgs.map(m=>`<div class="card"><div class="mut">${STEP[m.step]} / ${m.ai}
+      ${m.mock?'<span class="mock">（モック）</span>':''}${m.ok?'':'<span class="err">（失敗）</span>'}</div>
+      <pre>${esc(m.content)}</pre>
+      ${m.ok?`<button onclick="rate(${m.id},true)">役に立った</button> <button onclick="rate(${m.id},false)">いまいち</button>`:''}</div>`).join('');
+  }catch(e){$('info').textContent='失敗: '+e}
+  $('go').disabled=false;status();
+};
+async function rate(id,good){await P('/api/rate',{msg_id:id,good});status()}
+status();
+</script></body></html>
