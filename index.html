@@ -7,6 +7,8 @@
 body{margin:0;font:16px/1.6 system-ui,sans-serif;background:var(--bg);color:var(--fg);padding:16px;max-width:720px;margin:auto}
 h1{font-size:1.2rem}h2{font-size:1rem;margin:20px 0 6px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0}
+.final{background:var(--card);border:2px solid var(--acc);border-radius:10px;padding:14px;margin:12px 0}
+.final pre{font-size:1.05rem}
 .row{display:flex;gap:8px;flex-wrap:wrap}.chip{flex:1 1 150px}
 .mut{color:var(--mut);font-size:.85rem}
 textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
@@ -14,6 +16,8 @@ button{font:inherit;padding:6px 12px;border-radius:6px;border:1px solid var(--li
 button.main{background:var(--acc);color:#fff;border-color:var(--acc)}
 pre{white-space:pre-wrap;word-break:break-word;margin:6px 0;font:inherit}
 .mock{color:#b45309}.err{color:#c2410c}
+details{margin-top:10px}
+summary{cursor:pointer;color:var(--mut);padding:6px 0}
 </style></head><body>
 <h1>AI Research Lab（無料API版）</h1>
 <div id="st" class="row"></div>
@@ -26,7 +30,7 @@ const $=id=>document.getElementById(id);
 const J=(u,o)=>fetch(u,o).then(r=>r.json());
 const P=(u,b)=>J(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const STEP={hypothesis:'独立した仮説',critique:'反論',synthesize:'整理（未検証の仮説として）'};
+
 async function status(){
   const s=await J('/api/status');
   $('st').innerHTML=s.map(a=>`<div class="card chip"><b>${a.name}</b>
@@ -35,16 +39,32 @@ async function status(){
    <button onclick="test('${a.name}')">接続テスト</button></div>`).join('');
 }
 async function test(n){await P('/api/test/'+n);status()}
+
+function btns(m){
+  return m.ok?`<button onclick="rate(${m.id},true)">役に立った</button> <button onclick="rate(${m.id},false)">いまいち</button>`:'';
+}
+function card(m){
+  return `<div class="card"><div class="mut">${esc(m.step)} / ${esc(m.ai)}
+    ${m.mock?'<span class="mock">（モック）</span>':''}${m.ok?'':'<span class="err">（失敗）</span>'}</div>
+    <pre>${esc(m.content)}</pre>${btns(m)}</div>`;
+}
+
 $('go').onclick=async()=>{
   const t=$('t').value.trim(); if(!t)return;
-  $('go').disabled=true;$('info').textContent='実行中…（数十秒かかることがあります）';$('out').innerHTML='';
+  $('go').disabled=true;
+  $('info').textContent='議論中…（数分かかることがあります。画面は閉じずに待ってください）';
+  $('out').innerHTML='';
   try{
     const r=await P('/api/run',{topic:t});
     $('info').textContent=`呼び出し ${r.run.calls}/${r.max_calls} 回`;
-    $('out').innerHTML=r.msgs.map(m=>`<div class="card"><div class="mut">${STEP[m.step]} / ${m.ai}
-      ${m.mock?'<span class="mock">（モック）</span>':''}${m.ok?'':'<span class="err">（失敗）</span>'}</div>
-      <pre>${esc(m.content)}</pre>
-      ${m.ok?`<button onclick="rate(${m.id},true)">役に立った</button> <button onclick="rate(${m.id},false)">いまいち</button>`:''}</div>`).join('');
+    const fin=r.msgs.filter(m=>m.step==='最終回答');
+    const rest=r.msgs.filter(m=>m.step!=='最終回答');
+    const finHtml=fin.length
+      ? fin.map(m=>`<div class="final"><div class="mut">最終回答（議論のまとめ）/ ${esc(m.ai)}${m.mock?' （モック）':''}</div>
+          <pre>${esc(m.content)}</pre>${btns(m)}</div>`).join('')
+      : '<div class="mut">最終回答は出ませんでした。下の途中経過を確認してください。</div>';
+    $('out').innerHTML = finHtml +
+      `<details><summary>途中経過を開く（${rest.length}件）</summary>${rest.map(card).join('')}</details>`;
   }catch(e){$('info').textContent='失敗: '+e}
   $('go').disabled=false;status();
 };
